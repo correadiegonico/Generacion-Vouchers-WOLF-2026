@@ -18,6 +18,13 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# --- CARPETAS Y RUTAS DE PERSISTENCIA ---
+UPLOAD_DIR = "uploaded_files"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+SAVED_DESGLOSE_PATH = os.path.join(UPLOAD_DIR, "desglose_servicios.xlsx")
+SAVED_PASAJEROS_PATH = os.path.join(UPLOAD_DIR, "control_pasajeros.xlsx")
+
 # --- CONFIGURACIÓN DE BASE DE DATOS PERSISTENTE (SQLite) ---
 DB_PATH = "wolf_travel_itineraries.db"
 
@@ -59,8 +66,6 @@ def generate_pdf_voucher(data, output_folder):
     pdf_filename = f"Voucher_Coche{data['coche']}_{safe_service_name}.pdf"
     full_path = os.path.join(output_folder, pdf_filename)
     
-    # Orientación horizontal (Landscape) y dimensiones ajustadas para ocupar el 50% de la hoja A4 (apaisada)
-    # A4 landscape es 841.89 x 595.27 puntos. 50% de altura son aprox 280 puntos.
     doc = SimpleDocTemplate(
         full_path, 
         pagesize=landscape(letter), 
@@ -88,7 +93,6 @@ def generate_pdf_voucher(data, output_folder):
     story.append(Paragraph("<b>WOLF TRAVEL 2026</b>", title_style))
     story.append(Paragraph("VOUCHER DE SERVICIOS Y EXCURSIONES", subtitle_style))
     
-    # Orden estricto solicitado para los ítems
     table_data = [
         [Paragraph("<b>Fecha:</b>", bold_style), Paragraph(str(data['date']), normal_style)],
         [Paragraph("<b>N° de coche:</b>", bold_style), Paragraph(str(data['coche']), normal_style)],
@@ -112,11 +116,8 @@ def generate_pdf_voucher(data, output_folder):
     ]))
     
     story.append(t)
-    
-    # Espacio de unos 3 renglones antes de las firmas
     story.append(Spacer(1, 20))
     
-    # Líneas para firmas tal como están
     sig_data = [
         [Paragraph("___________________________________<br/><b>Firma Coordinador</b>", bold_style),
          Paragraph("___________________________________<br/><b>Firma Proveedor / Prestador</b>", bold_style)]
@@ -142,12 +143,26 @@ st.sidebar.markdown("### Archivos de Origen")
 desglose_file = st.sidebar.file_uploader("1. Desglose Servicios 2026 (.xlsx)", type=["xlsx", "xls"])
 pasajeros_file = st.sidebar.file_uploader("2. Control de Pasajeros (.xlsx)", type=["xlsx", "xls"])
 
+# Guardar o recuperar Desglose
 if desglose_file is not None:
+    with open(SAVED_DESGLOSE_PATH, "wb") as f:
+        f.write(desglose_file.getbuffer())
+
+# Guardar o recuperar Pasajeros
+if pasajeros_file is not None:
+    with open(SAVED_PASAJEROS_PATH, "wb") as f:
+        f.write(pasajeros_file.getbuffer())
+
+# Verificar si ya existen los archivos almacenados en el servidor
+has_desglose = os.path.exists(SAVED_DESGLOSE_PATH)
+has_pasajeros = os.path.exists(SAVED_PASAJEROS_PATH)
+
+if has_desglose:
     try:
-        xls = pd.ExcelFile(desglose_file)
+        xls = pd.ExcelFile(SAVED_DESGLOSE_PATH)
         dfs = []
         for sheet in xls.sheet_names:
-            df_t = pd.read_excel(desglose_file, sheet_name=sheet)
+            df_t = pd.read_excel(SAVED_DESGLOSE_PATH, sheet_name=sheet)
             df_t['DESTINO_ORIGEN'] = sheet
             df_t.columns = [f"{col}_{i}" if df_t.columns.duplicated()[i] else col for i, col in enumerate(df_t.columns)]
             dfs.append(df_t)
@@ -164,11 +179,11 @@ if desglose_file is not None:
         df_desglose = df_desglose.rename(columns=d_map)
 
         df_pasajeros = None
-        if pasajeros_file is not None:
+        if has_pasajeros:
             try:
-                xls_pax = pd.ExcelFile(pasajeros_file)
+                xls_pax = pd.ExcelFile(SAVED_PASAJEROS_PATH)
                 sheet_to_use = 'Listado Completo' if 'Listado Completo' in xls_pax.sheet_names else xls_pax.sheet_names[0]
-                df_pasajeros = pd.read_excel(pasajeros_file, sheet_name=sheet_to_use)
+                df_pasajeros = pd.read_excel(SAVED_PASAJEROS_PATH, sheet_name=sheet_to_use)
                 
                 p_map = {}
                 for col in df_pasajeros.columns:
@@ -184,12 +199,12 @@ if desglose_file is not None:
         # --- VISTA 1: DASHBOARD GENERAL ---
         if menu == "📊 Dashboard General":
             st.title("🐺 Wolf Travel 2026 - Dashboard Operativo")
-            st.markdown("Resumen de contratos y servicios turísticos cargados.")
+            st.markdown("Resumen de contratos y servicios turísticos cargados en el servidor.")
             
             c1, c2, c3 = st.columns(3)
             c1.metric("Contratos en Desglose", len(df_desglose['CODIGO'].dropna().unique()) if 'CODIGO' in df_desglose.columns else 0)
             c2.metric("Pasajeros Totales (PAX)", int(df_desglose['PAX'].sum()) if 'PAX' in df_desglose.columns and pd.api.types.is_numeric_dtype(df_desglose['PAX']) else 0)
-            c3.metric("Control de Pasajeros", "Cargado Correctamente" if df_pasajeros is not None else "Pendiente de Carga")
+            c3.metric("Control de Pasajeros", "Cargado y Sincronizado" if df_pasajeros is not None else "Pendiente")
             
             st.dataframe(df_desglose, use_container_width=True)
 
@@ -276,7 +291,6 @@ if desglose_file is not None:
                         coordinadores = st.number_input("Coordinadores:", min_value=1, value=2)
                         
                     if st.button("🚀 Generar y Guardar Vouchers en Carpeta", type="primary"):
-                        # Crear carpeta con nombre dinámico: vouchers coche [número]
                         output_folder = f"vouchers coche {selected_coche}"
                         os.makedirs(output_folder, exist_ok=True)
                         
@@ -328,11 +342,10 @@ if desglose_file is not None:
                 else:
                     st.warning("No se encontraron contratos asociados a este número de coche.")
             else:
-                st.warning("⚠️ Cargue el archivo **Control de Pasajeros.xlsx** en la barra lateral para habilitar esta sección.")
+                st.warning("⚠️ Cargue el archivo **Control de Pasajeros.xlsx** para habilitar esta sección.")
 
     except Exception as e:
         st.error(f"Error procesando los archivos Excel: {e}")
 else:
-    st.sidebar.warning("Por favor, cargue los archivos Excel en la barra lateral.")
     st.title("🐺 Wolf Travel 2026 - Generador de Vouchers")
-    st.info("Cargue los archivos de origen en la barra lateral para comenzar.")
+    st.info("📂 Por favor, utiliza los botones de la barra lateral izquierda para cargar los archivos **Desglose Servicios** y **Control de Pasajeros** por primera vez. Quedarán guardados permanentemente en el servidor.")
