@@ -33,11 +33,10 @@ def cargar_datos_drive():
         resp_pax.raise_for_status()
         df_pasajeros = pd.read_excel(io.BytesIO(resp_pax.content))
 
-        resp_des = requests.get(URL_DESGLOSE, timeout=15)
-        resp_des.raise_for_status()
-        df_desglose = pd.read_excel(io.BytesIO(resp_des.content))
+        # Cargamos todas las solapas del archivo de desglose en un diccionario
+        dict_desglose = pd.read_excel(io.BytesIO(requests.get(URL_DESGLOSE, timeout=15).content), sheet_name=None)
 
-        return df_pasajeros, df_desglose, None
+        return df_pasajeros, dict_desglose, None
     except Exception as e:
         return None, None, str(e)
 
@@ -139,7 +138,7 @@ st.title("🐺 Wolf Travel 2026")
 st.caption("Generador de Vouchers - Wolf Travel")
 
 with st.spinner("Sincronizando planillas con Google Drive..."):
-    df_pasajeros, df_desglose, error = cargar_datos_drive()
+    df_pasajeros, dict_desglose, error = cargar_datos_drive()
 
 if error:
     st.error(f"⚠️ Error al conectar con Google Drive: {error}")
@@ -186,12 +185,37 @@ if 'Coche' in df_pasajeros.columns:
             cant_pax_solo = len(df_coche[~mask_acomp])
             cant_pax_total = len(df_coche)
             
+            # Obtener códigos de contrato de este coche
+            codigos_coche = []
+            if 'Codigo' in df_coche.columns:
+                codigos_coche = df_coche['Codigo'].dropna().astype(str).unique().tolist()
+
             if 'Colegio' in df_coche.columns and 'Codigo' in df_coche.columns:
                 resumen_colegios = df_coche.groupby(['Colegio', 'Codigo']).size().reset_index(name='Cantidad de Pax Activos')
                 cant_contratos = len(resumen_colegios)
             else:
                 cant_contratos = 1
                 resumen_colegios = pd.DataFrame()
+
+            # --- DETECCIÓN INTELIGENTE DE SOLAPA / DESTINO ---
+            solapa_activa_nombre = None
+            df_solapa_activa = None
+            
+            for nombre_hoja, df_hoja in dict_desglose.items():
+                # Buscar si alguno de los códigos del coche está en esta hoja
+                hoja_str = df_hoja.astype(str).apply(lambda x: x.str.contains('|'.join(codigos_coche), case=False, na=False)).any().any() if codigos_coche else False
+                if hoja_str or (not solapa_activa_nombre and "VCP" in nombre_hoja.upper()):
+                    solapa_activa_nombre = nombre_hoja
+                    df_solapa_activa = df_hoja
+                    if hoja_str:
+                        break
+
+            if df_solapa_activa is None:
+                # Fallback a la primera solapa si no encuentra coincidencia exacta
+                solapa_activa_nombre = list(dict_desglose.keys())[0]
+                df_solapa_activa = dict_desglose[solapa_activa_nombre]
+
+            st.info(f"🔍 **Destino / Solapa Detectada en Drive:** `{solapa_activa_nombre}`")
 
             c_m1, c_m2, c_m3 = st.columns(3)
             with c_m1:
@@ -221,9 +245,9 @@ if 'Coche' in df_pasajeros.columns:
                 st.write("")
                 emitir_todos = st.checkbox("Emitir todos los vouchers del coche")
 
-            # Extracción de actividades
+            # Extracción de actividades específicas de la solapa detectada
             opciones_actividades = []
-            cols_desglose = [str(c).strip() for c in df_desglose.columns]
+            cols_desglose = [str(c).strip() for c in df_solapa_activa.columns]
             idx_hotel = -1
             for i, col_name in enumerate(cols_desglose):
                 if 'HOTEL' in col_name.upper():
@@ -278,7 +302,7 @@ if 'Coche' in df_pasajeros.columns:
 
             # --- ACCIÓN DE EMISIÓN ---
             if emitir_todos:
-                st.info(f"📦 Paquete ZIP para Coche {coche_final} (Hotel, Gastronomía y Actividades) usando los datos detallados arriba.")
+                st.info(f"📦 Paquete ZIP para Coche {coche_final} ({solapa_activa_nombre}) usando los datos detallados arriba.")
                 
                 if st.button("🖨️ Generar y Descargar Todos los Vouchers (ZIP)", use_container_width=True):
                     zip_buffer = io.BytesIO()
