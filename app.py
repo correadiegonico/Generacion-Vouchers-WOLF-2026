@@ -60,20 +60,45 @@ st.success("✅ Datos sincronizados correctamente desde Google Drive.")
 
 st.markdown("---")
 
-# --- PASO 1: BUSCADOR POR NÚMERO DE COCHE ---
+# --- PASO 1: BUSCADOR POR NÚMERO DE COCHE (COINCIDENCIA EXACTA) ---
 st.subheader("🚌 Búsqueda y Selección por Número de Coche")
 
 if 'Coche' in df_pasajeros.columns:
-    # Limpiar y asegurar que los valores sean texto válido, eliminando nulos
-    df_pasajeros['Coche'] = df_pasajeros['Coche'].fillna('').astype(str).str.strip()
-    df_pasajeros = df_pasajeros[df_pasajeros['Coche'] != '']
+    # Formatear la columna Coche como texto limpio
+    # Si viene como número decimal (ej. 25.0), lo convertimos a entero como texto (25)
+    def formatear_coche(val):
+        if pd.isna(val) or str(val).strip() == '':
+            return ''
+        try:
+            # Si es float equivalente a entero (ej: 25.0 -> '25')
+            val_float = float(val)
+            if val_float.is_integer():
+                return str(int(val_float))
+            return str(val).strip()
+        except ValueError:
+            return str(val).strip()
+
+    df_pasajeros['Coche_Clean'] = df_pasajeros['Coche'].apply(formatear_coche)
     
-    # Input de búsqueda de coche
-    nro_coche_input = st.text_input("Ingrese el Número de Coche:")
+    # Obtener lista única de coches válidos para el selector de sugerencia
+    coches_disponibles = sorted([c for c in df_pasajeros['Coche_Clean'].unique() if c != ''], key=lambda x: (int(x) if x.isdigit() else x))
     
-    if nro_coche_input:
-        # Filtrar el dataframe por el coche ingresado (coincidencia parcial o exacta)
-        df_coche = df_pasajeros[df_pasajeros['Coche'].str.contains(nro_coche_input.strip(), case=False, na=False)]
+    col_input, col_select = st.columns([2, 1])
+    with col_input:
+        nro_coche_input = st.text_input("Ingrese el Número de Coche exacto:")
+    with col_select:
+        coche_seleccionado = st.selectbox("O seleccione un Coche activo:", ["-- Seleccionar --"] + coches_disponibles)
+        
+    # Determinar el coche a filtrar
+    coche_final = ""
+    if nro_coche_input.strip():
+        coche_final = nro_coche_input.strip()
+    elif coche_seleccionado != "-- Seleccionar --":
+        coche_final = coche_seleccionado
+
+    if coche_final:
+        # FILTRADO EXACTO
+        df_coche = df_pasajeros[df_pasajeros['Coche_Clean'] == coche_final]
         
         if not df_coche.empty:
             cant_pax_total = len(df_coche)
@@ -167,13 +192,12 @@ if 'Coche' in df_pasajeros.columns:
                 observaciones = st.text_area("Observaciones:")
                 
                 st.markdown("---")
-                st.markdown("---")
                 st.markdown("`------------------------------------------------------------------------------------------------------------------`")
                 st.markdown("**Firma y Aclaración (Proveedor)**                                          **Firma y Aclaración (Coordinador)**")
 
             if st.button("🖨️ Generar y Descargar Voucher PDF"):
-                st.success(f"Voucher de [{tipo_servicio}] preparado correctamente para el Coche {nro_coche_input}.")
+                st.success(f"Voucher de [{tipo_servicio}] preparado correctamente para el Coche {coche_final}.")
         else:
-            st.warning(f"No se encontraron pasajeros asignados al coche '{nro_coche_input}'. Verifica el número e intenta nuevamente.")
+            st.warning(f"No se encontraron pasajeros asignados exactamente al coche '{coche_final}'. Verifica el número e intenta nuevamente.")
 else:
     st.error("No se encontró la columna 'Coche' en la planilla de Control de Pasajeros.")
