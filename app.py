@@ -35,7 +35,7 @@ def cargar_datos_drive():
         return None, None, str(e)
 
 # --- FUNCIÓN GENERADORA DE PDF EN MEMORIA ---
-def generar_pdf_voucher(tipo_servicio, detalle_subtipo, datos):
+def generar_pdf_voucher(tipo_servicio, datos):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer,
@@ -52,11 +52,9 @@ def generar_pdf_voucher(tipo_servicio, detalle_subtipo, datos):
     body_style = ParagraphStyle('BodyStyle', parent=styles['Normal'], fontSize=9, leading=12)
     bold_style = ParagraphStyle('BoldStyle', parent=styles['Normal'], fontSize=9, leading=12, fontName='Helvetica-Bold')
 
-    # Encabezado
+    # Encabezado Limpio (sin paréntesis al lado de ACTIVIDADES)
     story.append(Paragraph("<b>WOLF TRAVEL 2026</b>", title_style))
     titulo_voucher = f"VOUCHER DE SERVICIO - {tipo_servicio.upper()}"
-    if detalle_subtipo:
-        titulo_voucher += f" ({detalle_subtipo.upper()})"
     story.append(Paragraph(titulo_voucher, subtitle_style))
     story.append(Spacer(1, 0.3*cm))
 
@@ -223,7 +221,6 @@ if 'Coche' in df_pasajeros.columns:
             
             st.markdown("---")
             
-            # Campos comunes editables para el formulario actual
             coordinador_input = st.text_input("Coordinador a cargo:", value="Coordinador General")
             observaciones_input = st.text_area("Observaciones generales:")
             
@@ -245,7 +242,7 @@ if 'Coche' in df_pasajeros.columns:
                             "Tripulación Liberada": 0,
                             "Observaciones": observaciones_input
                         }
-                        pdf_hotel = generar_pdf_voucher("Hotel", "", datos_hotel)
+                        pdf_hotel = generar_pdf_voucher("Hotel", datos_hotel)
                         zip_file.writestr(f"Voucher_Hotel_Coche_{coche_final}.pdf", pdf_hotel.getvalue())
                         
                         # 2. Voucher Gastronomía
@@ -257,14 +254,14 @@ if 'Coche' in df_pasajeros.columns:
                             "Quinta Comida": 0,
                             "Observaciones": observaciones_input
                         }
-                        pdf_gas = generar_pdf_voucher("Gastronomía", "", datos_gas)
+                        pdf_gas = generar_pdf_voucher("Gastronomía", datos_gas)
                         zip_file.writestr(f"Voucher_Gastronomia_Coche_{coche_final}.pdf", pdf_gas.getvalue())
                         
-                        # 3. Vouchers de Actividades (Uno por cada actividad detectada)
+                        # 3. Vouchers de Actividades (Limpios)
                         for act in opciones_actividades:
                             datos_act = {
                                 "Coche": coche_final,
-                                "Actividad": act,
+                                "Actividad / Servicio": act,
                                 "Coordinador a cargo": coordinador_input,
                                 "Pax": cant_pax_solo,
                                 "Acompañantes": cant_acomp_solo,
@@ -275,8 +272,7 @@ if 'Coche' in df_pasajeros.columns:
                                 "Liberados": 0,
                                 "Observaciones": observaciones_input
                             }
-                            pdf_act = generar_pdf_voucher("Actividades", act, datos_act)
-                            # Nombre de archivo seguro para el zip
+                            pdf_act = generar_pdf_voucher("Actividades", datos_act)
                             nombre_seguro = "".join([c if c.isalnum() else "_" for c in act])
                             zip_file.writestr(f"Voucher_Actividad_{nombre_seguro}_Coche_{coche_final}.pdf", pdf_act.getvalue())
                     
@@ -288,7 +284,6 @@ if 'Coche' in df_pasajeros.columns:
                         mime="application/zip"
                     )
             else:
-                # Generación individual según el tipo seleccionado
                 if tipo_servicio == "Hotel":
                     datos_voucher = {
                         "Coche": coche_final,
@@ -309,7 +304,7 @@ if 'Coche' in df_pasajeros.columns:
                 else:
                     datos_voucher = {
                         "Coche": coche_final,
-                        "Actividad / Servicio": servicio_especifico,
+                        "Actividad / Servicio": servicio_especifico if servicio_especifico != "-- Seleccionar Actividad --" else "A DEFINIR",
                         "Coordinador a cargo": coordinador_input,
                         "Pax": cant_pax_solo,
                         "Acompañantes": cant_acomp_solo,
@@ -321,7 +316,7 @@ if 'Coche' in df_pasajeros.columns:
                         "Observaciones": observaciones_input
                     }
 
-                pdf_bytes = generar_pdf_voucher(tipo_servicio, servicio_especifico if tipo_servicio == "Actividades" else "", datos_voucher)
+                pdf_bytes = generar_pdf_voucher(tipo_servicio, datos_voucher)
                 
                 st.download_button(
                     label=f"🖨️ Generar y Descargar Voucher [{tipo_servicio}]",
