@@ -11,10 +11,10 @@ from reportlab.lib.units import cm
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
-    page_title="Wolf Travel 2026 - Generador de Vouchers",
+    page_title="Wolf Travel 2026 - Vouchers",
     page_icon="🐺",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="centered", # Usamos centered para que en celulares se vea ordenado verticalmente sin desbordes
+    initial_sidebar_state="collapsed" # Contraído por defecto para ganar velocidad en móviles
 )
 
 # --- IDs DE GOOGLE DRIVE ---
@@ -34,7 +34,7 @@ def cargar_datos_drive():
     except Exception as e:
         return None, None, str(e)
 
-# --- FUNCIÓN GENERADORA DE PDF EN MEMORIA (NUEVO DISEÑO) ---
+# --- FUNCIÓN GENERADORA DE PDF EN MEMORIA ---
 def generar_pdf_voucher(tipo_servicio, datos):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -46,9 +46,8 @@ def generar_pdf_voucher(tipo_servicio, datos):
     styles = getSampleStyleSheet()
     story = []
 
-    # Estilos
     logo_style = ParagraphStyle('LogoStyle', parent=styles['Normal'], fontSize=20, leading=22, fontName='Helvetica-Bold', textColor=colors.HexColor('#1E3A8A'))
-    meta_style = ParagraphStyle('MetaStyle', parent=styles['Normal'], fontSize=9, leading=12, alignment=2) # Alineado a la derecha
+    meta_style = ParagraphStyle('MetaStyle', parent=styles['Normal'], fontSize=9, leading=12, alignment=2)
     
     banner_title = ParagraphStyle('BannerTitle', parent=styles['Heading1'], fontSize=14, leading=16, alignment=1, textColor=colors.white, fontName='Helvetica-Bold')
     banner_sub = ParagraphStyle('BannerSub', parent=styles['Heading2'], fontSize=10, leading=12, alignment=1, textColor=colors.white, fontName='Helvetica-Bold')
@@ -56,7 +55,7 @@ def generar_pdf_voucher(tipo_servicio, datos):
     body_style = ParagraphStyle('BodyStyle', parent=styles['Normal'], fontSize=9, leading=11)
     bold_style = ParagraphStyle('BoldStyle', parent=styles['Normal'], fontSize=9, leading=11, fontName='Helvetica-Bold')
 
-    # --- 1. ENCABEZADO SUPERIOR (Logo izq / Fecha y Nº Voucher der) ---
+    # Encabezado Superior
     header_data = [
         [
             Paragraph("<b>Wolf</b> <font size=10>travel</font>", logo_style),
@@ -71,8 +70,6 @@ def generar_pdf_voucher(tipo_servicio, datos):
     story.append(t_header)
     story.append(Spacer(1, 0.1*cm))
 
-    # --- 2. BANNER CENTRAL (Título y Subtítulo) ---
-    # Normalizar subtítulo según tipo de servicio
     sub_texto = "HOTELERÍA" if tipo_servicio.lower() == "hotel" else ("SERVICIOS GASTRONÓMICOS" if tipo_servicio.lower() == "gastronomía" else "ACTIVIDADES")
     
     banner_content = [
@@ -90,7 +87,6 @@ def generar_pdf_voucher(tipo_servicio, datos):
     story.append(t_banner)
     story.append(Spacer(1, 0.4*cm))
 
-    # --- 3. TABLA DE DATOS DEL VOUCHER ---
     tabla_datos = []
     for k, v in datos.items():
         tabla_datos.append([Paragraph(f"<b>{k}:</b>", bold_style), Paragraph(str(v), body_style)])
@@ -103,11 +99,10 @@ def generar_pdf_voucher(tipo_servicio, datos):
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
     ]))
     story.append(t)
-    story.append(Spacer(1, 0.8*cm)) # Espacio antes de firmas
+    story.append(Spacer(1, 0.8*cm))
 
-    # --- 4. BLOQUE DE FIRMAS Y ACLARACIÓN (Con renglón extra de espacio) ---
     firmas_data = [
-        ["", ""], # Renglón extra de espacio solicitado
+        ["", ""],
         ["........................................................................", "........................................................................"],
         ["Firma y Aclaración (Coordinador)", "Firma y Aclaración (Proveedor)"]
     ]
@@ -127,35 +122,26 @@ def generar_pdf_voucher(tipo_servicio, datos):
 
 # --- BARRA LATERAL (SIDEBAR) ---
 with st.sidebar:
-    st.title("🐺 Wolf Travel 2026")
-    st.markdown("---")
-    st.subheader("Archivos de Origen (Google Drive)")
-    st.markdown("🟢 **Control de Pasajeros**")
-    st.caption(f"[Abrir en Google Drive](https://docs.google.com/spreadsheets/d/{ID_CONTROL_PASAJEROS}/edit)")
-    st.markdown("🟢 **Desglose de Servicios 2026**")
-    st.caption(f"[Abrir en Google Drive](https://docs.google.com/spreadsheets/d/{ID_DESGLOSE_SERVICIOS}/edit)")
-
-    st.markdown("---")
-    if st.button("🔄 Sincronizar datos de Drive"):
+    st.title("🐺 Wolf Travel")
+    if st.button("🔄 Sincronizar datos"):
         st.cache_data.clear()
         st.rerun()
 
 # --- HEADER PRINCIPAL ---
-st.title("🐺 Wolf Travel 2026 - Generador de Vouchers")
+st.title("🐺 Wolf Travel 2026")
+st.caption("Generador Móvil de Vouchers")
 
 # Cargar datos
-with st.spinner("Conectando y descargando datos desde Google Drive..."):
+with st.spinner("Cargando base de datos..."):
     df_pasajeros, df_desglose, error = cargar_datos_drive()
 
 if error:
-    st.error(f"Error al conectar con Google Drive: {error}")
+    st.error(f"Error de conexión: {error}")
     st.stop()
 
-st.success("✅ Datos sincronizados correctamente desde Google Drive.")
+# --- BUSCADOR POR NÚMERO DE COCHE ---
 st.markdown("---")
-
-# --- PASO 1: BUSCADOR POR NÚMERO DE COCHE ---
-st.subheader("🚌 Búsqueda y Selección por Número de Coche")
+st.subheader("🚌 Buscar Coche")
 
 if 'Coche' in df_pasajeros.columns:
     def formatear_coche(val):
@@ -176,15 +162,10 @@ if 'Coche' in df_pasajeros.columns:
     
     coches_disponibles = sorted([c for c in df_activos['Coche_Clean'].unique() if c != ''], key=lambda x: (int(x) if x.isdigit() else x))
     
-    col_input, col_select = st.columns([2, 1])
-    with col_input:
-        nro_coche_input = st.text_input("Ingrese el Número de Coche exacto:")
-    with col_select:
-        coche_seleccionado = st.selectbox("O seleccione un Coche activo:", ["-- Seleccionar --"] + coches_disponibles)
+    coche_seleccionado = st.selectbox("Seleccione el Número de Coche:", ["-- Seleccionar --"] + coches_disponibles)
         
-    coche_final = nro_coche_input.strip() if nro_coche_input.strip() else (coche_seleccionado if coche_seleccionado != "-- Seleccionar --" else "")
-
-    if coche_final:
+    if coche_seleccionado != "-- Seleccionar --":
+        coche_final = coche_seleccionado
         df_coche = df_activos[df_activos['Coche_Clean'] == coche_final]
         
         if not df_coche.empty:
@@ -196,41 +177,22 @@ if 'Coche' in df_pasajeros.columns:
             cant_pax_total = len(df_coche)
             
             if 'Colegio' in df_coche.columns and 'Codigo' in df_coche.columns:
-                resumen_colegios = df_coche.groupby(['Colegio', 'Codigo']).size().reset_index(name='Cantidad de Pax Activos')
-                cant_contratos = len(resumen_colegios)
+                cant_contratos = df_coche['Codigo'].nunique()
             else:
                 cant_contratos = 1
-                resumen_colegios = pd.DataFrame()
 
-            # Métricas
-            c_m1, c_m2, c_m3 = st.columns(3)
-            with c_m1:
-                st.metric(label="Cantidad de Contratos", value=cant_contratos)
-            with c_m2:
-                st.metric(label="Pasajeros (Pax)", value=cant_pax_solo)
-            with c_m3:
-                st.metric(label="Acompañantes", value=cant_acomp_solo)
-                
-            st.markdown("##### Detalle de Colegios y Contratos en este Coche:")
-            if not resumen_colegios.empty:
-                st.dataframe(resumen_colegios, use_container_width=True)
+            # Métricas adaptadas a móviles
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Contratos", cant_contratos)
+            col2.metric("Pax", cant_pax_solo)
+            col3.metric("Acomp.", cant_acomp_solo)
             
             st.markdown("---")
-            
-            # --- PASO 2: MENÚ DE CONFIGURACIÓN Y EMISIÓN ---
             st.subheader("⚙️ Configuración del Voucher")
             
-            col_tipo_serv, col_chk = st.columns([2, 2])
-            with col_tipo_serv:
-                tipo_servicio = st.selectbox(
-                    "Tipo de servicio:",
-                    ["Actividades", "Hotel", "Gastronomía"]
-                )
-            with col_chk:
-                st.write("")
-                emitir_todos = st.checkbox("Emitir todos los vouchers del coche")
+            tipo_servicio = st.selectbox("Tipo de servicio:", ["Actividades", "Hotel", "Gastronomía"])
+            emitir_todos = st.checkbox("Emitir todos los vouchers del coche")
 
-            # Extracción dinámica de actividades de Desglose de Servicios
             opciones_actividades = []
             cols_desglose = [str(c).strip() for c in df_desglose.columns]
             idx_hotel = -1
@@ -247,65 +209,34 @@ if 'Coche' in df_pasajeros.columns:
             servicio_especifico = ""
             if not emitir_todos:
                 if tipo_servicio == "Actividades":
-                    servicio_especifico = st.selectbox(
-                        "Servicio a emitir:",
-                        ["-- Seleccionar Actividad --"] + opciones_actividades
-                    )
-                else:
-                    st.text_input("Servicio a emitir:", value="", disabled=True, placeholder="No requiere selección específica")
+                    servicio_especifico = st.selectbox("Servicio a emitir:", ["-- Seleccionar Actividad --"] + opciones_actividades)
             
             st.markdown("---")
-            
             coordinador_input = st.text_input("Coordinador a cargo:", value="Coordinador General")
-            observaciones_input = st.text_area("Observaciones generales:")
+            observaciones_input = st.text_area("Observaciones:")
             
             st.markdown("---")
             
-            # Botón de Descarga (Único o Lote en ZIP)
             if emitir_todos:
-                st.info(f"📦 Se generará un paquete ZIP con: 1 Voucher de Hotel, 1 de Gastronomía y {len(opciones_actividades)} Vouchers de Actividades para el Coche {coche_final}.")
+                st.info(f"📦 Paquete ZIP para Coche {coche_final} (Hotel, Gastronomía y Actividades).")
                 
-                if st.button("🖨️ Generar y Descargar Todos los Vouchers (ZIP)"):
+                if st.button("⬇️ Generar y Descargar Paquete ZIP", type="primary", use_container_width=True):
                     zip_buffer = io.BytesIO()
                     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
                         
-                        # 1. Voucher Hotel
-                        datos_hotel = {
-                            "Coche": coche_final,
-                            "Hotel": "A definir / Según Operativa",
-                            "Tripulación": 2,
-                            "Tripulación Liberada": 0,
-                            "Observaciones": observaciones_input
-                        }
+                        datos_hotel = {"Coche": coche_final, "Hotel": "A definir", "Tripulación": 2, "Tripulación Liberada": 0, "Observaciones": observaciones_input}
                         pdf_hotel = generar_pdf_voucher("Hotel", datos_hotel)
                         zip_file.writestr(f"Voucher_Hotel_Coche_{coche_final}.pdf", pdf_hotel.getvalue())
                         
-                        # 2. Voucher Gastronomía
-                        datos_gas = {
-                            "Coche": coche_final,
-                            "Coordinador": coordinador_input,
-                            "Almuerzos": cant_pax_total,
-                            "Cenas": cant_pax_total,
-                            "Quinta Comida": 0,
-                            "Observaciones": observaciones_input
-                        }
+                        datos_gas = {"Coche": coche_final, "Coordinador": coordinador_input, "Almuerzos": cant_pax_total, "Cenas": cant_pax_total, "Quinta Comida": 0, "Observaciones": observaciones_input}
                         pdf_gas = generar_pdf_voucher("Gastronomía", datos_gas)
                         zip_file.writestr(f"Voucher_Gastronomia_Coche_{coche_final}.pdf", pdf_gas.getvalue())
                         
-                        # 3. Vouchers de Actividades
                         for act in opciones_actividades:
                             datos_act = {
-                                "Coche": coche_final,
-                                "Actividad / Servicio": act,
-                                "Coordinador a cargo": coordinador_input,
-                                "Pax": cant_pax_solo,
-                                "Acompañantes": cant_acomp_solo,
-                                "Coordinadores": 2,
-                                "Choferes": 2,
-                                "Staff Extra": 0,
-                                "TOTAL GENERAL": cant_pax_solo + cant_acomp_solo + 4,
-                                "Liberados": 0,
-                                "Observaciones": observaciones_input
+                                "Coche": coche_final, "Actividad / Servicio": act, "Coordinador a cargo": coordinador_input,
+                                "Pax": cant_pax_solo, "Acompañantes": cant_acomp_solo, "Coordinadores": 2, "Choferes": 2,
+                                "Staff Extra": 0, "TOTAL GENERAL": cant_pax_solo + cant_acomp_solo + 4, "Liberados": 0, "Observaciones": observaciones_input
                             }
                             pdf_act = generar_pdf_voucher("Actividades", datos_act)
                             nombre_seguro = "".join([c if c.isalnum() else "_" for c in act])
@@ -313,54 +244,32 @@ if 'Coche' in df_pasajeros.columns:
                     
                     zip_buffer.seek(0)
                     st.download_button(
-                        label="⬇️ Descargar Paquete ZIP con Todos los Vouchers",
+                        label="📥 Toca aquí para descargar el archivo ZIP",
                         data=zip_buffer,
-                        file_name=f"Vouchers_Completos_Coche_{coche_final}.zip",
-                        mime="application/zip"
+                        file_name=f"Vouchers_Coche_{coche_final}.zip",
+                        mime="application/zip",
+                        use_container_width=True
                     )
             else:
                 if tipo_servicio == "Hotel":
-                    datos_voucher = {
-                        "Coche": coche_final,
-                        "Hotel": st.text_input("Hotel específico:"),
-                        "Tripulación": 2,
-                        "Tripulación Liberada": 0,
-                        "Observaciones": observaciones_input
-                    }
+                    datos_voucher = {"Coche": coche_final, "Hotel": st.text_input("Hotel específico:"), "Tripulación": 2, "Tripulación Liberada": 0, "Observaciones": observaciones_input}
                 elif tipo_servicio == "Gastronomía":
-                    datos_voucher = {
-                        "Coche": coche_final,
-                        "Coordinador": coordinador_input,
-                        "Almuerzos": cant_pax_total,
-                        "Cenas": cant_pax_total,
-                        "Quinta Comida": 0,
-                        "Observaciones": observaciones_input
-                    }
+                    datos_voucher = {"Coche": coche_final, "Coordinador": coordinador_input, "Almuerzos": cant_pax_total, "Cenas": cant_pax_total, "Quinta Comida": 0, "Observaciones": observaciones_input}
                 else:
                     datos_voucher = {
-                        "Coche": coche_final,
-                        "Actividad / Servicio": servicio_especifico if servicio_especifico != "-- Seleccionar Actividad --" else "A DEFINIR",
-                        "Coordinador a cargo": coordinador_input,
-                        "Pax": cant_pax_solo,
-                        "Acompañantes": cant_acomp_solo,
-                        "Coordinadores": 2,
-                        "Choferes": 2,
-                        "Staff Extra": 0,
-                        "TOTAL GENERAL": cant_pax_solo + cant_acomp_solo + 4,
-                        "Liberados": 0,
-                        "Observaciones": observaciones_input
+                        "Coche": coche_final, "Actividad / Servicio": servicio_especifico if servicio_especifico != "-- Seleccionar Actividad --" else "A DEFINIR",
+                        "Coordinador a cargo": coordinador_input, "Pax": cant_pax_solo, "Acompañantes": cant_acomp_solo, "Coordinadores": 2,
+                        "Choferes": 2, "Staff Extra": 0, "TOTAL GENERAL": cant_pax_solo + cant_acomp_solo + 4, "Liberados": 0, "Observaciones": observaciones_input
                     }
 
                 pdf_bytes = generar_pdf_voucher(tipo_servicio, datos_voucher)
                 
                 st.download_button(
-                    label=f"🖨️ Generar y Descargar Voucher [{tipo_servicio}]",
+                    label=f"📥 Descargar Voucher PDF [{tipo_servicio}]",
                     data=pdf_bytes,
                     file_name=f"Voucher_{tipo_servicio}_Coche_{coche_final}.pdf",
-                    mime="application/pdf"
+                    mime="application/pdf",
+                    use_container_width=True
                 )
-
         else:
-            st.warning(f"No se encontraron pasajeros ACTIVOS asignados exactamente al coche '{coche_final}'.")
-else:
-    st.error("No se encontró la columna 'Coche' en la planilla de Control de Pasajeros.")
+            st.warning("No hay pasajeros activos en este coche.")
