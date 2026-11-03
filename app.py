@@ -11,9 +11,9 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- CONFIGURACIÓN DE GOOGLE DRIVE ---
-ID_CONTROL_PASAJEROS = "1bg6yaJ1V4pd2g_5rufnByz3sVe-ovGP6ckWYEB62l0g"
-ID_DESGLOSE_SERVICIOS = "1baRRKiC_-fZb5t_FmQtM-1kMK7epKHx4zckGlCVkhHo"
+# --- IDs DE GOOGLE DRIVE (NUEVOS) ---
+ID_CONTROL_PASAJEROS = "1cfMOu1NAvfvbiuDB7QRSvLsMdui4LMqfFGciptQr5Xw"
+ID_DESGLOSE_SERVICIOS = "1ObkoFqie4MV7xZ2PL9I1wqKXZm-qRjnrfAllT_fn2s4"
 
 URL_PASAJEROS = f"https://docs.google.com/spreadsheets/d/{ID_CONTROL_PASAJEROS}/export?format=xlsx"
 URL_DESGLOSE = f"https://docs.google.com/spreadsheets/d/{ID_DESGLOSE_SERVICIOS}/export?format=xlsx"
@@ -35,10 +35,10 @@ with st.sidebar:
     st.subheader("Archivos de Origen (Google Drive)")
     
     st.markdown("🟢 **Control de Pasajeros**")
-    st.caption("[Abrir en Google Drive](https://docs.google.com/spreadsheets/d/1bg6yaJ1V4pd2g_5rufnByz3sVe-ovGP6ckWYEB62l0g/edit?usp=sharing)")
+    st.caption(f"[Abrir en Google Drive](https://docs.google.com/spreadsheets/d/{ID_CONTROL_PASAJEROS}/edit)")
     
     st.markdown("🟢 **Desglose de Servicios 2026**")
-    st.caption("[Abrir en Google Drive](https://docs.google.com/spreadsheets/d/1baRRKiC_-fZb5t_FmQtM-1kMK7epKHx4zckGlCVkhHo/edit?usp=sharing)")
+    st.caption(f"[Abrir en Google Drive](https://docs.google.com/spreadsheets/d/{ID_DESGLOSE_SERVICIOS}/edit)")
 
     st.markdown("---")
     if st.button("🔄 Sincronizar datos de Drive"):
@@ -58,6 +58,3 @@ if error:
     st.stop()
 
 st.success("✅ Datos sincronizados correctamente desde Google Drive.")
-
-# Aquí iremos agregando los selectores de destino, pasajeros y el generador de PDF de forma limpia.
-st.info("Próximo paso: Integrar los filtros y la generación de tu voucher en PDF.")
