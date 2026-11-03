@@ -57,20 +57,17 @@ if error:
     st.stop()
 
 st.success("✅ Datos sincronizados correctamente desde Google Drive.")
-
 st.markdown("---")
 
-# --- PASO 1: BUSCADOR POR NÚMERO DE COCHE (COINCIDENCIA EXACTA) ---
+# --- PASO 1: BUSCADOR POR NÚMERO DE COCHE ---
 st.subheader("🚌 Búsqueda y Selección por Número de Coche")
 
 if 'Coche' in df_pasajeros.columns:
     # Formatear la columna Coche como texto limpio
-    # Si viene como número decimal (ej. 25.0), lo convertimos a entero como texto (25)
     def formatear_coche(val):
         if pd.isna(val) or str(val).strip() == '':
             return ''
         try:
-            # Si es float equivalente a entero (ej: 25.0 -> '25')
             val_float = float(val)
             if val_float.is_integer():
                 return str(int(val_float))
@@ -80,8 +77,12 @@ if 'Coche' in df_pasajeros.columns:
 
     df_pasajeros['Coche_Clean'] = df_pasajeros['Coche'].apply(formatear_coche)
     
-    # Obtener lista única de coches válidos para el selector de sugerencia
-    coches_disponibles = sorted([c for c in df_pasajeros['Coche_Clean'].unique() if c != ''], key=lambda x: (int(x) if x.isdigit() else x))
+    # Filtrar únicamente pasajeros cuyo Estado (Columna K) sea "Activo"
+    col_estado = 'Estado' if 'Estado' in df_pasajeros.columns else df_pasajeros.columns[10] # Columna K es índice 10
+    df_activos = df_pasajeros[df_pasajeros[col_estado].astype(str).str.strip().str.upper() == 'ACTIVO'].copy()
+    
+    # Lista única de coches válidos activos
+    coches_disponibles = sorted([c for c in df_activos['Coche_Clean'].unique() if c != ''], key=lambda x: (int(x) if x.isdigit() else x))
     
     col_input, col_select = st.columns([2, 1])
     with col_input:
@@ -89,34 +90,44 @@ if 'Coche' in df_pasajeros.columns:
     with col_select:
         coche_seleccionado = st.selectbox("O seleccione un Coche activo:", ["-- Seleccionar --"] + coches_disponibles)
         
-    # Determinar el coche a filtrar
-    coche_final = ""
-    if nro_coche_input.strip():
-        coche_final = nro_coche_input.strip()
-    elif coche_seleccionado != "-- Seleccionar --":
-        coche_final = coche_seleccionado
+    coche_final = nro_coche_input.strip() if nro_coche_input.strip() else (coche_seleccionado if coche_seleccionado != "-- Seleccionar --" else "")
 
     if coche_final:
-        # FILTRADO EXACTO
-        df_coche = df_pasajeros[df_pasajeros['Coche_Clean'] == coche_final]
+        # FILTRADO EXACTO SOBRE PASAJEROS ACTIVOS
+        df_coche = df_activos[df_activos['Coche_Clean'] == coche_final]
         
         if not df_coche.empty:
+            # Separar Pax y Acompañantes si existe columna 'Tipo' o 'Categoria'
+            col_tipo = 'Tipo' if 'Tipo' in df_coche.columns else ('Categoria' if 'Categoria' in df_coche.columns else None)
+            
+            if col_tipo:
+                mask_acomp = df_coche[col_tipo].astype(str).str.upper().str.contains('ACOMPAÑANTE|ACOMPANANTE|PADRE|MADRE', na=False)
+                cant_pax_solo = len(df_coche[~mask_acomp])
+                cant_acomp_solo = len(df_coche[mask_acomp])
+            else:
+                cant_pax_solo = len(df_coche)
+                cant_acomp_solo = 0
+
             cant_pax_total = len(df_coche)
             
             # Agrupar por Colegio y Código de contrato
             if 'Colegio' in df_coche.columns and 'Codigo' in df_coche.columns:
-                resumen_colegios = df_coche.groupby(['Colegio', 'Codigo']).size().reset_index(name='Cantidad de Pax')
+                resumen_colegios = df_coche.groupby(['Colegio', 'Codigo']).size().reset_index(name='Cantidad de Pax Activos')
                 cant_contratos = len(resumen_colegios)
+                codigos_contratos = resumen_colegios['Codigo'].unique().tolist()
             else:
                 cant_contratos = 1
                 resumen_colegios = pd.DataFrame()
+                codigos_contratos = []
 
-            # Mostrar métricas de resumen en un renglón
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric(label="Cantidad de Contratos (Colegios)", value=cant_contratos)
-            with col2:
-                st.metric(label="Cantidad Total de Pasajeros (Pax)", value=cant_pax_total)
+            # Mostrar métricas de resumen
+            c_m1, c_m2, c_m3 = st.columns(3)
+            with c_m1:
+                st.metric(label="Cantidad de Contratos", value=cant_contratos)
+            with c_m2:
+                st.metric(label="Pasajeros (Pax Activos)", value=cant_pax_solo)
+            with c_m3:
+                st.metric(label="Acompañantes Activos", value=cant_acomp_solo)
                 
             st.markdown("##### Detalle de Colegios y Contratos en este Coche:")
             if not resumen_colegios.empty:
@@ -127,13 +138,43 @@ if 'Coche' in df_pasajeros.columns:
             # --- PASO 2: MENÚ DE CONFIGURACIÓN Y EMISIÓN ---
             st.subheader("⚙️ Configuración del Voucher")
             
-            tipo_servicio = st.selectbox(
-                "Servicio a emitir:",
-                ["Actividad Diurna", "Actividad Nocturna", "Hotel", "Gastronomía"]
-            )
+            col_tipo_serv, col_chk = st.columns([2, 2])
+            with col_tipo_serv:
+                tipo_servicio = st.selectbox(
+                    "Tipo de servicio:",
+                    ["Actividades", "Hotel", "Gastronomía"]
+                )
+            with col_chk:
+                st.write("") # Espaciador
+                emitir_todos = st.checkbox("Emitir todos los vouchers del coche")
+
+            # Obtención dinámica de opciones de actividades desde Desglose de Servicios
+            opciones_actividades = []
+            if 'Hotel' in [str(c).strip() for c in df_desglose.columns]:
+                columnas_lista = [str(c).strip() for c in df_desglose.columns]
+                idx_hotel = columnas_lista.index('Hotel')
+                brutas = columnas_lista[idx_hotel + 1:]
+                
+                # Desestimar las indicadas por usuario
+                desestimar = {'TOTAL MERIEN', 'TOTAL 5TA', 'REGRESO BUS', 'HTL PARANORMAL'}
+                opciones_actividades = [col for col in brutas if col.upper() not in desestimar and not col.startswith('Unnamed')]
+
+            # Selección de Servicio a emitir
+            servicio_especifico = ""
+            if not emitir_todos:
+                if tipo_servicio == "Actividades":
+                    servicio_especifico = st.selectbox(
+                        "Servicio a emitir:",
+                        ["-- Seleccionar Actividad --"] + opciones_actividades
+                    )
+                else:
+                    st.text_input("Servicio a emitir:", value="", disabled=True, placeholder="No requiere selección específica")
             
+            st.markdown("---")
+            
+            # Formulario según Tipo de Servicio elegido
             if tipo_servicio == "Hotel":
-                st.info("📌 Modelo activo: Voucher de Hotelería (Mantiene formato original del PDF de Hotel)")
+                st.info("📌 Modelo activo: Voucher de Hotelería")
                 hotel_nombre = st.text_input("Hotel:")
                 col_in, col_out = st.columns(2)
                 with col_in:
@@ -144,60 +185,57 @@ if 'Coche' in df_pasajeros.columns:
                 tipo_habitacion = st.multiselect("Tipo de Habitación:", ["DBL (Doble)", "TPL (Triple)", "CDPL (Cuádruple)", "QTPL (Quíntuple)"])
                 tripulacion = st.number_input("Tripulación:", min_value=0, value=2, step=1)
                 tripulacion_liberada = st.number_input("Tripulación Liberada:", min_value=0, value=0, step=1)
-                observaciones_hotel = st.text_area("Observaciones:")
-                
-            else:
-                col_a, col_b = st.columns(2)
-                with col_a:
-                    coordinador = st.text_input("Nombre del coordinador encargado:")
-                with col_b:
-                    liberados = st.number_input("Liberados:", min_value=0, value=0, step=1)
-                
-                pax_auto = cant_pax_total
-                acompanantes_auto = 0 
-                coord_pred = 2
-                choferes_pred = 2
-                
-                st.markdown("##### Distribución de Asistentes:")
-                c1, c2, c3, c4, c5 = st.columns(5)
-                with c1:
-                    st.metric("Pax", pax_auto)
-                with c2:
-                    acompanantes = st.number_input("Acompañantes:", min_value=0, value=acompanantes_auto, step=1)
-                with c3:
-                    coordinadores_cant = st.number_input("Coordinadores", min_value=0, value=coord_pred, step=1)
-                with c4:
-                    choferes_cant = st.number_input("Choferes", min_value=0, value=choferes_pred, step=1)
-                with c5:
-                    staff_extra = st.number_input("Staff Extra:", min_value=0, value=0, step=1)
-                    
-                total_general = pax_auto + acompanantes + coordinadores_cant + choferes_cant + staff_extra
-                st.markdown(f"### **TOTAL GENERAL:** `{total_general}` personas")
-                
-                if tipo_servicio == "Actividad Diurna":
-                    excursion = st.text_input("Excursión:")
-                    tipo_servicio_detalle = st.text_input("Tipo de servicio:")
-                elif tipo_servicio == "Actividad Nocturna":
-                    boliche = st.text_input("Boliche / Local Nocturno:")
-                elif tipo_servicio == "Gastronomía":
-                    st.markdown("##### Cantidades de Servicios Gastronómicos:")
-                    g1, g2, g3 = st.columns(3)
-                    with g1:
-                        cant_almuerzos = st.number_input("Almuerzos:", min_value=0, value=0, step=1)
-                    with g2:
-                        cant_cenas = st.number_input("Cenas:", min_value=0, value=0, step=1)
-                    with g3:
-                        cant_quinta = st.number_input("Quinta Comida:", min_value=0, value=0, step=1)
+                observaciones = st.text_area("Observaciones:")
+
+            elif tipo_servicio == "Gastronomía":
+                st.info("📌 Modelo activo: Voucher de Servicios Gastronómicos")
+                coordinador = st.text_input("Coordinador a cargo:")
+                st.markdown("##### Cantidades de Servicios Gastronómicos:")
+                g1, g2, g3 = st.columns(3)
+                with g1:
+                    cant_almuerzos = st.number_input("Cantidad de Almuerzos:", min_value=0, value=cant_pax_total, step=1)
+                with g2:
+                    cant_cenas = st.number_input("Cantidad de Cenas:", min_value=0, value=cant_pax_total, step=1)
+                with g3:
+                    cant_quinta = st.number_input("Cantidad de Quinta Comida:", min_value=0, value=0, step=1)
 
                 observaciones = st.text_area("Observaciones:")
+
+            else:  # Actividades
+                st.info("📌 Modelo activo: Voucher de Actividades (Diurnas y Nocturnas unificadas)")
                 
-                st.markdown("---")
-                st.markdown("`------------------------------------------------------------------------------------------------------------------`")
-                st.markdown("**Firma y Aclaración (Proveedor)**                                          **Firma y Aclaración (Coordinador)**")
+                coordinador = st.text_input("Coordinador a cargo:")
+                
+                st.markdown("##### Distribución y Conteo de Asistentes:")
+                c1, c2, c3, c4, c5 = st.columns(5)
+                with c1:
+                    pax_val = st.number_input("Pax (Automático):", min_value=0, value=cant_pax_solo, step=1)
+                with c2:
+                    acomp_val = st.number_input("Acompañantes (Automático):", min_value=0, value=cant_acomp_solo, step=1)
+                with c3:
+                    coord_val = st.number_input("Coordinadores:", min_value=0, value=2, step=1)
+                with c4:
+                    choferes_val = st.number_input("Choferes:", min_value=0, value=2, step=1)
+                with c5:
+                    staff_val = st.number_input("Staff Extra:", min_value=0, value=0, step=1)
+                    
+                total_general = pax_val + acomp_val + coord_val + choferes_val + staff_val
+                st.markdown(f"### **TOTAL:** `{total_general}` personas")
+                
+                liberados = st.number_input("Liberados:", min_value=0, value=0, step=1)
+                observaciones = st.text_area("Observaciones:")
+
+            st.markdown("---")
+            st.markdown("`------------------------------------------------------------------------------------------------------------------`")
+            st.markdown("**Firma y Aclaración (Coordinador)**                                          **Firma y Aclaración (Proveedor)**")
 
             if st.button("🖨️ Generar y Descargar Voucher PDF"):
-                st.success(f"Voucher de [{tipo_servicio}] preparado correctamente para el Coche {coche_final}.")
+                if emitir_todos:
+                    st.success(f"Emisión por LOTE iniciada: Generando todos los vouchers de [{tipo_servicio}] para el Coche {coche_final}...")
+                else:
+                    st.success(f"Generando voucher de [{tipo_servicio}] - {servicio_especifico} para el Coche {coche_final}...")
+
         else:
-            st.warning(f"No se encontraron pasajeros asignados exactamente al coche '{coche_final}'. Verifica el número e intenta nuevamente.")
+            st.warning(f"No se encontraron pasajeros ACTIVOS asignados exactamente al coche '{coche_final}'.")
 else:
     st.error("No se encontró la columna 'Coche' en la planilla de Control de Pasajeros.")
