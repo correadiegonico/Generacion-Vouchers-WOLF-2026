@@ -1,6 +1,7 @@
 import os
 import io
 import zipfile
+import requests
 import pandas as pd
 import streamlit as st
 from reportlab.lib.pagesizes import A5, landscape
@@ -24,12 +25,19 @@ ID_DESGLOSE_SERVICIOS = "1ObkoFqie4MV7xZ2PL9I1wqKXZm-qRjnrfAllT_fn2s4"
 URL_PASAJEROS = f"https://docs.google.com/spreadsheets/d/{ID_CONTROL_PASAJEROS}/export?format=xlsx"
 URL_DESGLOSE = f"https://docs.google.com/spreadsheets/d/{ID_DESGLOSE_SERVICIOS}/export?format=xlsx"
 
-# --- CARGA OPTIMIZADA CON CACHÉ EXTENDIDA ---
+# --- CARGA SEGURA CON TIMEOUT (Evita que la app se congele si Drive tarda) ---
 @st.cache_data(ttl=1800, show_spinner=False)
 def cargar_datos_drive():
     try:
-        df_pasajeros = pd.read_excel(URL_PASAJEROS)
-        df_desglose = pd.read_excel(URL_DESGLOSE)
+        # Descarga con timeout de 15 segundos para evitar bloqueos
+        resp_pax = requests.get(URL_PASAJEROS, timeout=15)
+        resp_pax.raise_for_status()
+        df_pasajeros = pd.read_excel(io.BytesIO(resp_pax.content))
+
+        resp_des = requests.get(URL_DESGLOSE, timeout=15)
+        resp_des.raise_for_status()
+        df_desglose = pd.read_excel(io.BytesIO(resp_des.content))
+
         return df_pasajeros, df_desglose, None
     except Exception as e:
         return None, None, str(e)
@@ -55,7 +63,6 @@ def generar_pdf_voucher(tipo_servicio, datos):
     body_style = ParagraphStyle('BodyStyle', parent=styles['Normal'], fontSize=9, leading=11)
     bold_style = ParagraphStyle('BoldStyle', parent=styles['Normal'], fontSize=9, leading=11, fontName='Helvetica-Bold')
 
-    # Encabezado Superior
     header_data = [
         [
             Paragraph("<b>Wolf</b> <font size=10>travel</font>", logo_style),
@@ -120,7 +127,7 @@ def generar_pdf_voucher(tipo_servicio, datos):
     buffer.seek(0)
     return buffer
 
-# --- BARRA LATERAL (SIDEBAR) ---
+# --- BARRA LATERAL ---
 with st.sidebar:
     st.title("🐺 Wolf Travel 2026")
     st.markdown("---")
@@ -132,17 +139,18 @@ with st.sidebar:
 st.title("🐺 Wolf Travel 2026")
 st.caption("Generador de Vouchers - Wolf Travel")
 
-with st.spinner("Sincronizando planillas..."):
+with st.spinner("Sincronizando planillas con Google Drive..."):
     df_pasajeros, df_desglose, error = cargar_datos_drive()
 
 if error:
-    st.error(f"Error de conexión con Google Drive: {error}")
+    st.error(f"⚠️ Error al conectar con Google Drive: {error}")
+    st.info("Sugerencia: Verifica que los enlaces de Google Drive sigan siendo públicos y accesibles.")
     st.stop()
 
 st.success("✅ Sistema conectado correctamente.")
 st.markdown("---")
 
-# --- PASO 1: BUSCADOR POR NÚMERO DE COCHE (ANCHO COMPLETO ESTABLE) ---
+# --- PASO 1: BUSCADOR POR NÚMERO DE COCHE ---
 st.subheader("🚌 Búsqueda y Selección por Número de Coche")
 
 if 'Coche' in df_pasajeros.columns:
@@ -164,7 +172,6 @@ if 'Coche' in df_pasajeros.columns:
     
     coches_disponibles = sorted([c for c in df_activos['Coche_Clean'].unique() if c != ''], key=lambda x: (int(x) if x.isdigit() else x))
     
-    # Diseño en bloques verticales de ancho completo (Evita errores de carga en celulares)
     nro_coche_input = st.text_input("Ingrese el Número de Coche exacto:")
     coche_seleccionado = st.selectbox("O seleccione un Coche activo de la lista:", ["-- Seleccionar --"] + coches_disponibles)
         
@@ -188,7 +195,6 @@ if 'Coche' in df_pasajeros.columns:
                 cant_contratos = 1
                 resumen_colegios = pd.DataFrame()
 
-            # Métricas
             c_m1, c_m2, c_m3 = st.columns(3)
             with c_m1:
                 st.metric(label="Contratos", value=cant_contratos)
@@ -203,7 +209,6 @@ if 'Coche' in df_pasajeros.columns:
             
             st.markdown("---")
             
-            # --- PASO 2: MENÚ DE CONFIGURACIÓN Y EMISIÓN ---
             st.subheader("⚙️ Configuración del Voucher")
             
             tipo_servicio = st.selectbox(
