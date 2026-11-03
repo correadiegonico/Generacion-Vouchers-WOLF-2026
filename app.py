@@ -33,7 +33,6 @@ def cargar_datos_drive():
         resp_pax.raise_for_status()
         df_pasajeros = pd.read_excel(io.BytesIO(resp_pax.content))
 
-        # Cargamos todas las solapas del archivo de desglose en un diccionario
         dict_desglose = pd.read_excel(io.BytesIO(requests.get(URL_DESGLOSE, timeout=15).content), sheet_name=None)
 
         return df_pasajeros, dict_desglose, None
@@ -185,7 +184,6 @@ if 'Coche' in df_pasajeros.columns:
             cant_pax_solo = len(df_coche[~mask_acomp])
             cant_pax_total = len(df_coche)
             
-            # Obtener códigos de contrato de este coche
             codigos_coche = []
             if 'Codigo' in df_coche.columns:
                 codigos_coche = df_coche['Codigo'].dropna().astype(str).unique().tolist()
@@ -197,12 +195,11 @@ if 'Coche' in df_pasajeros.columns:
                 cant_contratos = 1
                 resumen_colegios = pd.DataFrame()
 
-            # --- DETECCIÓN INTELIGENTE DE SOLAPA / DESTINO ---
+            # --- DETECCIÓN INTELIGENTE DE SOLAPA Y DESTINO CORTO ---
             solapa_activa_nombre = None
             df_solapa_activa = None
             
             for nombre_hoja, df_hoja in dict_desglose.items():
-                # Buscar si alguno de los códigos del coche está en esta hoja
                 hoja_str = df_hoja.astype(str).apply(lambda x: x.str.contains('|'.join(codigos_coche), case=False, na=False)).any().any() if codigos_coche else False
                 if hoja_str or (not solapa_activa_nombre and "VCP" in nombre_hoja.upper()):
                     solapa_activa_nombre = nombre_hoja
@@ -211,11 +208,19 @@ if 'Coche' in df_pasajeros.columns:
                         break
 
             if df_solapa_activa is None:
-                # Fallback a la primera solapa si no encuentra coincidencia exacta
                 solapa_activa_nombre = list(dict_desglose.keys())[0]
                 df_solapa_activa = dict_desglose[solapa_activa_nombre]
 
-            st.info(f"🔍 **Destino / Solapa Detectada en Drive:** `{solapa_activa_nombre}`")
+            # Asignación del código corto de destino
+            nombre_upper = solapa_activa_nombre.upper()
+            if "BARI" in nombre_upper or "BRC" in nombre_upper:
+                codigo_destino = "BRC"
+            elif "CAMBORIU" in nombre_upper or "CBU" in nombre_upper:
+                codigo_destino = "CBU"
+            else:
+                codigo_destino = "VCP"
+
+            st.info(f"🔍 **Destino:** {codigo_destino}")
 
             c_m1, c_m2, c_m3 = st.columns(3)
             with c_m1:
@@ -302,7 +307,7 @@ if 'Coche' in df_pasajeros.columns:
 
             # --- ACCIÓN DE EMISIÓN ---
             if emitir_todos:
-                st.info(f"📦 Paquete ZIP para Coche {coche_final} ({solapa_activa_nombre}) usando los datos detallados arriba.")
+                st.info(f"📦 Paquete ZIP para Coche {coche_final} (Destino: {codigo_destino}) usando los datos detallados arriba.")
                 
                 if st.button("🖨️ Generar y Descargar Todos los Vouchers (ZIP)", use_container_width=True):
                     zip_buffer = io.BytesIO()
