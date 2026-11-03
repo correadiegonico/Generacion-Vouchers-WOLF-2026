@@ -210,11 +210,16 @@ if 'Coche' in df_pasajeros.columns:
             # --- PASO 2: MENÚ DE CONFIGURACIÓN Y EMISIÓN ---
             st.subheader("⚙️ Configuración del Voucher")
             
-            tipo_servicio = st.selectbox(
-                "Tipo de servicio:",
-                ["Actividades", "Hotel", "Gastronomía"]
-            )
-            emitir_todos = st.checkbox("Emitir todos los vouchers del coche")
+            col_ts, col_chk = st.columns([2, 2])
+            with col_ts:
+                tipo_servicio = st.selectbox(
+                    "Tipo de servicio:",
+                    ["Actividades", "Hotel", "Gastronomía"]
+                )
+            with col_chk:
+                st.write("")
+                st.write("")
+                emitir_todos = st.checkbox("Emitir todos los vouchers del coche")
 
             # Extracción de actividades
             opciones_actividades = []
@@ -230,34 +235,89 @@ if 'Coche' in df_pasajeros.columns:
                 desestimar = {'TOTAL MERIEN', 'TOTAL 5TA', 'REGRESO BUS', 'HTL PARANORMAL'}
                 opciones_actividades = [col for col in brutas if col.upper() not in desestimar and not col.startswith('Unnamed')]
 
-            # --- CAMPOS DINÁMICOS EDITABLES SI NO ES EMITIR TODOS ---
-            coordinador_input = "Coordinador General"
-            observaciones_input = ""
-            
+            # --- CAMPOS EDITABLES SIEMPRE VISIBLES ---
+            st.markdown("---")
+            st.markdown(f"#### 📝 Detalle del Voucher ({tipo_servicio})")
+
+            servicio_especifico = ""
+            if tipo_servicio == "Actividades":
+                servicio_especifico = st.selectbox("Servicio a emitir:", ["-- Seleccionar Actividad --"] + opciones_actividades)
+            elif tipo_servicio == "Hotel":
+                hotel_ingresado = st.text_input("Hotel específico:", value="A definir / Según Operativa")
+                tripulacion_ingresada = st.number_input("Tripulación:", min_value=0, value=2)
+                trip_lib_ingresada = st.number_input("Tripulación Liberada:", min_value=0, value=0)
+            elif tipo_servicio == "Gastronomía":
+                almuerzos_ing = st.number_input("Almuerzos:", min_value=0, value=int(cant_pax_total))
+                cenas_ing = st.number_input("Cenas:", min_value=0, value=int(cant_pax_total))
+                quinta_ing = st.number_input("Quinta Comida:", min_value=0, value=0)
+
+            coordinador_input = st.text_input("Coordinador a cargo:", value="Coordinador General")
+
+            if tipo_servicio == "Actividades":
+                c_f1, c_f2 = st.columns(2)
+                with c_f1:
+                    pax_ing = st.number_input("Pax:", min_value=0, value=int(cant_pax_solo))
+                with c_f2:
+                    acomp_ing = st.number_input("Acompañantes:", min_value=0, value=int(cant_acomp_solo))
+                    
+                c_f3, c_f4, c_f5, c_f6 = st.columns(4)
+                with c_f3:
+                    coord_cant = st.number_input("Coordinadores:", min_value=0, value=2)
+                with c_f4:
+                    choferes_cant = st.number_input("Choferes:", min_value=0, value=2)
+                with c_f5:
+                    staff_cant = st.number_input("Staff Extra:", min_value=0, value=0)
+                with c_f6:
+                    lib_cant = st.number_input("Liberados:", min_value=0, value=0)
+                    
+                total_general_calc = pax_ing + acomp_ing + coord_cant + choferes_cant + staff_cant
+                st.info(f"🔢 **TOTAL GENERAL CALCULADO:** {total_general_calc}")
+
+            observaciones_input = st.text_area("Observaciones generales:")
+            st.markdown("---")
+
+            # --- ACCIÓN DE EMISIÓN ---
             if emitir_todos:
-                st.markdown("---")
-                coordinador_input = st.text_input("Coordinador a cargo (para el lote):", value="Coordinador General")
-                observaciones_input = st.text_area("Observaciones generales (para el lote):")
-                st.markdown("---")
-                st.info(f"📦 Paquete ZIP para Coche {coche_final} (Hotel, Gastronomía y Actividades).")
+                st.info(f"📦 Paquete ZIP para Coche {coche_final} (Hotel, Gastronomía y Actividades) usando los datos detallados arriba.")
                 
                 if st.button("🖨️ Generar y Descargar Todos los Vouchers (ZIP)", use_container_width=True):
                     zip_buffer = io.BytesIO()
                     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
                         
-                        datos_hotel = {"Coche": coche_final, "Hotel": "A definir / Según Operativa", "Tripulación": 2, "Tripulación Liberada": 0, "Observaciones": observaciones_input}
+                        datos_hotel = {
+                            "Coche": coche_final, 
+                            "Hotel": hotel_ingresado if tipo_servicio == "Hotel" else "A definir / Según Operativa", 
+                            "Tripulación": tripulacion_ingresada if tipo_servicio == "Hotel" else 2, 
+                            "Tripulación Liberada": trip_lib_ingresada if tipo_servicio == "Hotel" else 0, 
+                            "Observaciones": observaciones_input
+                        }
                         pdf_hotel = generar_pdf_voucher("Hotel", datos_hotel)
                         zip_file.writestr(f"Voucher_Hotel_Coche_{coche_final}.pdf", pdf_hotel.getvalue())
                         
-                        datos_gas = {"Coche": coche_final, "Coordinador": coordinador_input, "Almuerzos": cant_pax_total, "Cenas": cant_pax_total, "Quinta Comida": 0, "Observaciones": observaciones_input}
+                        datos_gas = {
+                            "Coche": coche_final, 
+                            "Coordinador": coordinador_input, 
+                            "Almuerzos": almuerzos_ing if tipo_servicio == "Gastronomía" else cant_pax_total, 
+                            "Cenas": cenas_ing if tipo_servicio == "Gastronomía" else cant_pax_total, 
+                            "Quinta Comida": quinta_ing if tipo_servicio == "Gastronomía" else 0, 
+                            "Observaciones": observaciones_input
+                        }
                         pdf_gas = generar_pdf_voucher("Gastronomía", datos_gas)
                         zip_file.writestr(f"Voucher_Gastronomia_Coche_{coche_final}.pdf", pdf_gas.getvalue())
                         
                         for act in opciones_actividades:
                             datos_act = {
-                                "Coche": coche_final, "Actividad / Servicio": act, "Coordinador a cargo": coordinador_input,
-                                "Pax": cant_pax_solo, "Acompañantes": cant_acomp_solo, "Coordinadores": 2, "Choferes": 2,
-                                "Staff Extra": 0, "TOTAL GENERAL": cant_pax_solo + cant_acomp_solo + 4, "Liberados": 0, "Observaciones": observaciones_input
+                                "Coche": coche_final, 
+                                "Actividad / Servicio": act, 
+                                "Coordinador a cargo": coordinador_input,
+                                "Pax": pax_ing if tipo_servicio == "Actividades" else cant_pax_solo, 
+                                "Acompañantes": acomp_ing if tipo_servicio == "Actividades" else cant_acomp_solo, 
+                                "Coordinadores": coord_cant if tipo_servicio == "Actividades" else 2, 
+                                "Choferes": choferes_cant if tipo_servicio == "Actividades" else 2,
+                                "Staff Extra": staff_cant if tipo_servicio == "Actividades" else 0, 
+                                "TOTAL GENERAL": (pax_ing + acomp_ing + coord_cant + choferes_cant + staff_cant) if tipo_servicio == "Actividades" else (cant_pax_solo + cant_acomp_solo + 4), 
+                                "Liberados": lib_cant if tipo_servicio == "Actividades" else 0, 
+                                "Observaciones": observaciones_input
                             }
                             pdf_act = generar_pdf_voucher("Actividades", datos_act)
                             nombre_seguro = "".join([c if c.isalnum() else "_" for c in act])
@@ -272,80 +332,38 @@ if 'Coche' in df_pasajeros.columns:
                         use_container_width=True
                     )
             else:
-                st.markdown("---")
-                st.markdown(f"#### 📝 Detalle del Voucher de {tipo_servicio}")
-                
                 if tipo_servicio == "Hotel":
-                    hotel_ingresado = st.text_input("Hotel específico:", value="A definir / Según Operativa")
-                    tripulacion_ingresada = st.number_input("Tripulación:", min_value=0, value=2)
-                    trip_lib_ingresada = st.number_input("Tripulación Liberada:", min_value=0, value=0)
-                    coordinador_input = st.text_input("Coordinador a cargo:", value="Coordinador General")
-                    observaciones_input = st.text_area("Observaciones generales:")
-                    
                     datos_voucher = {
-                        "Coche": coche_final,
-                        "Hotel": hotel_ingresado,
-                        "Tripulación": tripulacion_ingresada,
-                        "Tripulación Liberada": trip_lib_ingresada,
+                        "Coche": coche_final, 
+                        "Hotel": hotel_ingresado, 
+                        "Tripulación": tripulacion_ingresada, 
+                        "Tripulación Liberada": trip_lib_ingresada, 
                         "Observaciones": observaciones_input
                     }
-
                 elif tipo_servicio == "Gastronomía":
-                    coordinador_input = st.text_input("Coordinador a cargo:", value="Coordinador General")
-                    almuerzos_ing = st.number_input("Almuerzos:", min_value=0, value=int(cant_pax_total))
-                    cenas_ing = st.number_input("Cenas:", min_value=0, value=int(cant_pax_total))
-                    quinta_ing = st.number_input("Quinta Comida:", min_value=0, value=0)
-                    observaciones_input = st.text_area("Observaciones generales:")
-                    
                     datos_voucher = {
-                        "Coche": coche_final,
-                        "Coordinador": coordinador_input,
-                        "Almuerzos": almuerzos_ing,
-                        "Cenas": cenas_ing,
-                        "Quinta Comida": quinta_ing,
+                        "Coche": coche_final, 
+                        "Coordinador": coordinador_input, 
+                        "Almuerzos": almuerzos_ing, 
+                        "Cenas": cenas_ing, 
+                        "Quinta Comida": quinta_ing, 
                         "Observaciones": observaciones_input
                     }
-
-                else: # Actividades
-                    servicio_especifico = st.selectbox("Servicio a emitir:", ["-- Seleccionar Actividad --"] + opciones_actividades)
-                    coordinador_input = st.text_input("Coordinador a cargo:", value="Coordinador General")
-                    
-                    c_f1, c_f2 = st.columns(2)
-                    with c_f1:
-                        pax_ing = st.number_input("Pax:", min_value=0, value=int(cant_pax_solo))
-                    with c_f2:
-                        acomp_ing = st.number_input("Acompañantes:", min_value=0, value=int(cant_acomp_solo))
-                        
-                    c_f3, c_f4, c_f5, c_f6 = st.columns(4)
-                    with c_f3:
-                        coord_cant = st.number_input("Coordinadores:", min_value=0, value=2)
-                    with c_f4:
-                        choferes_cant = st.number_input("Choferes:", min_value=0, value=2)
-                    with c_f5:
-                        staff_cant = st.number_input("Staff Extra:", min_value=0, value=0)
-                    with c_f6:
-                        lib_cant = st.number_input("Liberados:", min_value=0, value=0)
-                        
-                    total_general_calc = pax_ing + acomp_ing + coord_cant + choferes_cant + staff_cant
-                    st.info(f"🔢 **TOTAL GENERAL CALCULADO:** {total_general_calc}")
-                    
-                    observaciones_input = st.text_area("Observaciones generales:")
-
+                else:
                     datos_voucher = {
-                        "Coche": coche_final,
+                        "Coche": coche_final, 
                         "Actividad / Servicio": servicio_especifico if servicio_especifico != "-- Seleccionar Actividad --" else "A DEFINIR",
-                        "Coordinador a cargo": coordinador_input,
-                        "Pax": pax_ing,
-                        "Acompañantes": acomp_ing,
+                        "Coordinador a cargo": coordinador_input, 
+                        "Pax": pax_ing, 
+                        "Acompañantes": acomp_ing, 
                         "Coordinadores": coord_cant,
-                        "Choferes": choferes_cant,
-                        "Staff Extra": staff_cant,
-                        "TOTAL GENERAL": total_general_calc,
-                        "Liberados": lib_cant,
+                        "Choferes": choferes_cant, 
+                        "Staff Extra": staff_cant, 
+                        "TOTAL GENERAL": total_general_calc, 
+                        "Liberados": lib_cant, 
                         "Observaciones": observaciones_input
                     }
 
-                st.markdown("---")
                 pdf_bytes = generar_pdf_voucher(tipo_servicio, datos_voucher)
                 
                 st.download_button(
