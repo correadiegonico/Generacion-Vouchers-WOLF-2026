@@ -63,22 +63,19 @@ st.markdown("---")
 # --- PASO 1: BUSCADOR POR NÚMERO DE COCHE ---
 st.subheader("🚌 Búsqueda y Selección por Número de Coche")
 
-# Limpiar posibles espacios en blanco en la columna Coche si existen
 if 'Coche' in df_pasajeros.columns:
-    df_pasajeros['Coche'] = df_pasajeros['Coche'].astype(str).str.strip()
-    
-    # Obtener lista de coches disponibles para sugerir o ingresar
-    coches_disponibles = sorted(df_pasajeros['Coche'].unique())
+    # Limpiar y asegurar que los valores sean texto válido, eliminando nulos
+    df_pasajeros['Coche'] = df_pasajeros['Coche'].fillna('').astype(str).str.strip()
+    df_pasajeros = df_pasajeros[df_pasajeros['Coche'] != '']
     
     # Input de búsqueda de coche
-    nro_coche_input = st.text_input("Ingrese o seleccione el Número de Coche:")
+    nro_coche_input = st.text_input("Ingrese el Número de Coche:")
     
     if nro_coche_input:
-        # Filtrar el dataframe por el coche ingresado
-        df_coche = df_pasajeros[df_pasajeros['Coche'].str.contains(nro_coche_input, case=False, na=False)]
+        # Filtrar el dataframe por el coche ingresado (coincidencia parcial o exacta)
+        df_coche = df_pasajeros[df_pasajeros['Coche'].str.contains(nro_coche_input.strip(), case=False, na=False)]
         
         if not df_coche.empty:
-            # Cálculos automáticos basados en las columnas reales
             cant_pax_total = len(df_coche)
             
             # Agrupar por Colegio y Código de contrato
@@ -110,7 +107,6 @@ if 'Coche' in df_pasajeros.columns:
                 ["Actividad Diurna", "Actividad Nocturna", "Hotel", "Gastronomía"]
             )
             
-            # Formulario según tipo de servicio
             if tipo_servicio == "Hotel":
                 st.info("📌 Modelo activo: Voucher de Hotelería (Mantiene formato original del PDF de Hotel)")
                 hotel_nombre = st.text_input("Hotel:")
@@ -126,16 +122,14 @@ if 'Coche' in df_pasajeros.columns:
                 observaciones_hotel = st.text_area("Observaciones:")
                 
             else:
-                # Menú para Actividades Diurnas, Nocturnas y Gastronomía
                 col_a, col_b = st.columns(2)
                 with col_a:
                     coordinador = st.text_input("Nombre del coordinador encargado:")
                 with col_b:
                     liberados = st.number_input("Liberados:", min_value=0, value=0, step=1)
                 
-                # Datos automáticos del coche
                 pax_auto = cant_pax_total
-                acompanantes_auto = 0 # Valor por defecto editable o automático
+                acompanantes_auto = 0 
                 coord_pred = 2
                 choferes_pred = 2
                 
@@ -155,7 +149,6 @@ if 'Coche' in df_pasajeros.columns:
                 total_general = pax_auto + acompanantes + coordinadores_cant + choferes_cant + staff_extra
                 st.markdown(f"### **TOTAL GENERAL:** `{total_general}` personas")
                 
-                # Campos específicos según actividad
                 if tipo_servicio == "Actividad Diurna":
                     excursion = st.text_input("Excursión:")
                     tipo_servicio_detalle = st.text_input("Tipo de servicio:")
