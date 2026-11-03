@@ -1,14 +1,7 @@
 import os
-import re
 import io
-from datetime import datetime
 import pandas as pd
 import streamlit as st
-
-from reportlab.lib.pagesizes import letter, landscape
-from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(
@@ -26,7 +19,7 @@ URL_PASAJEROS = f"https://docs.google.com/spreadsheets/d/{ID_CONTROL_PASAJEROS}/
 URL_DESGLOSE = f"https://docs.google.com/spreadsheets/d/{ID_DESGLOSE_SERVICIOS}/export?format=xlsx"
 
 # --- FUNCIONES DE CARGA AUTOMÁTICA DESDE DRIVE ---
-@st.cache_data(ttl=300)  # Recarga automáticamente los datos de Drive cada 5 minutos
+@st.cache_data(ttl=300)
 def cargar_datos_drive():
     try:
         df_pasajeros = pd.read_excel(URL_PASAJEROS)
@@ -37,13 +30,10 @@ def cargar_datos_drive():
 
 # --- BARRA LATERAL (SIDEBAR) ---
 with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/616/616408.png", width=60) # Icono lobo de referencia o título
-    st.title("Wolf Travel 2026")
-    
+    st.title("🐺 Wolf Travel 2026")
     st.markdown("---")
     st.subheader("Archivos de Origen (Google Drive)")
     
-    # Enlaces informativos sin opción de carga manual
     st.markdown("🟢 **Control de Pasajeros**")
     st.caption("[Abrir en Google Drive](https://docs.google.com/spreadsheets/d/1bg6yaJ1V4pd2g_5rufnByz3sVe-ovGP6ckWYEB62l0g/edit?usp=sharing)")
     
@@ -64,10 +54,10 @@ with st.spinner("Conectando y descargando datos desde Google Drive..."):
 
 if error:
     st.error(f"Error al conectar con Google Drive: {error}")
-    st.warning("Verifica que las planillas en Google Drive tengan activado el acceso por enlace ('Cualquier persona con el enlace puede ver').")
+    st.warning("Verifica que las planillas tengan activado el acceso por enlace ('Cualquier persona con el enlace puede ver').")
     st.stop()
 
 st.success("✅ Datos sincronizados correctamente desde Google Drive.")
 
-# --- AQUÍ CONTINÚA LA LÓGICA DE TU INTERFAZ DE GENERACIÓN DE VOUCHERS Y PDF ---
-# (Formularios de Staff Empresa, TOTAL calculado, Observaciones y st.download_button para los PDF)
+# Aquí iremos agregando los selectores de destino, pasajeros y el generador de PDF de forma limpia.
+st.info("Próximo paso: Integrar los filtros y la generación de tu voucher en PDF.")
